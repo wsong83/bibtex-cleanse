@@ -1,40 +1,56 @@
-"""命令行入口——只负责参数解析，所有逻辑委托给 core 模块。"""
-
 import argparse
+import sys
+from pathlib import Path
 
-from .core import add, multiply, greet, _VERSION
+from .cleanse import load_conferences, load_locations, load_expansions, process_bib, TARGET_FIELDS
 
+# ===================================================================
+# CLI
+# ===================================================================
+def main() -> None:
+    parser = argparse.ArgumentParser(description='Standardise conference/journal names in BibTeX.')
+    parser.add_argument('-f', '--conferences', default='data/conferences.csv', help='3-column CSV (abbr, match name, full name)')
+    parser.add_argument('-c', '--city', default='data/city.csv', help='Location database CSV (Type, Name)')
+    parser.add_argument('-s', '--short', default='data/short.csv', help='Abbreviation expansion rules (short.csv)')
+    parser.add_argument('-i', '--input', required=True)
+    parser.add_argument('-o', '--output', required=True)
+    parser.add_argument('-t', '--threshold', type=float, default=80.0, help='Min score 0-100 (default: 80)')
+    args = parser.parse_args()
 
-def main(argv: list[str] | None = None) -> None:
-    """CLI 主函数。`pyproject.toml` 中的 [project.scripts] 指向这里。"""
-    parser = argparse.ArgumentParser(
-        prog="mycli",
-        description="my_package 的命令行工具",
-    )
-    parser.add_argument("-v", "--version", action="version", version=_VERSION)
+    try:
+        abbr_to_full, match_all, match_conf, full_to_abbr = load_conferences(args.conferences)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f'Error: {exc}', file=sys.stderr); sys.exit(1)
 
-    sub = parser.add_subparsers(dest="command")
+    try:
+        locations_set = load_locations(args.city)
+    except FileNotFoundError as exc:
+        print(f'Error: {exc}', file=sys.stderr); sys.exit(1)
 
-    # greet 子命令
-    p_greet = sub.add_parser("greet", help="问候某人")
-    p_greet.add_argument("name", nargs="?", default="World")
+    try:
+        expansions = load_expansions(args.short)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f'Error: {exc}', file=sys.stderr); sys.exit(1)
 
-    # add 子命令
-    p_add = sub.add_parser("add", help="两数相加")
-    p_add.add_argument("a", type=float)
-    p_add.add_argument("b", type=float)
+    try:
+        content = Path(args.input).read_text(encoding='utf-8')
+    except (FileNotFoundError, ValueError) as exc:
+        print(f'Error: {exc}', file=sys.stderr); sys.exit(1)
 
-    # mul 子命令
-    p_mul = sub.add_parser("mul", help="两数相乘")
-    p_mul.add_argument("a", type=float)
-    p_mul.add_argument("b", type=float)
+    print(f'[bibclean] {len(match_all)} match entries, {len(abbr_to_full)} csv abbreviations, {len(expansions)} expansion rules, {len(locations_set)} locations loaded', file=sys.stderr)
+    print(f"[bibclean] target: {', '.join(sorted(TARGET_FIELDS))}", file=sys.stderr)
+    print(f'[bibclean] threshold = {args.threshold}\n', file=sys.stderr)
 
-    args = parser.parse_args(argv)
+    new_content, results = process_bib(content, abbr_to_full, match_all, match_conf, args.threshold, expansions, full_to_abbr, locations_set)
 
-    match args.command:
-        case "greet":
-            print(greet(args.name))
-        case "add":
-            print(f"{args.a} + {args.b} = {add(args.a, args.b)}")
-        case "mul":
-            print(f"{args.a} \u00d7 {args.b} = {multiply(args.a, args.b)}")
+    n_total = len(results)
+    n_replaced = sum(1 for r in results if r['matched'] is not None)
+    avg_score = sum(r['score'] for r in results) / n_total if n_total else 0.0
+
+    print(f'\n[bibclean] done: {n_total} target field(s) checked, {n_replaced} replaced, {n_total - n_replaced} kept, average score {avg_score:.1f}.', file=sys.stderr)
+    Path(args.output).write_text(new_content, encoding='utf-8')
+    print(f'[bibclean] output written to {args.output}', file=sys.stderr)
+
+if __name__ == '__main__':
+    main()
+

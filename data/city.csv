@@ -1,0 +1,423 @@
+type,name
+city,san antonio
+city,austin
+city,houston
+city,dallas
+city,boston
+city,cambridge
+city,cape cod
+city,new york
+city,buffalo
+city,san francisco
+city,los angeles
+city,san diego
+city,san jose
+city,sacramento
+city,oakland
+city,santa clara
+city,anaheim
+city,irvine
+city,long beach
+city,fremont
+city,pasadena
+city,palo alto
+city,chicago
+city,seattle
+city,bellevue
+city,tacoma
+city,washington
+city,alexandria
+city,bethesda
+city,silver spring
+city,reston
+city,atlanta
+city,miami
+city,fort lauderdale
+city,tampa
+city,orlando
+city,jacksonville
+city,denver
+city,boulder
+city,phoenix
+city,tucson
+city,philadelphia
+city,pittsburgh
+city,portland
+city,las vegas
+city,henderson
+city,reno
+city,minneapolis
+city,saint paul
+city,cleveland
+city,columbus
+city,cincinnati
+city,dayton
+city,charlotte
+city,raleigh
+city,durham
+city,nashville
+city,memphis
+city,knoxville
+city,kansas city
+city,st. louis
+city,salt lake city
+city,provo
+city,park city
+city,honolulu
+city,maui
+city,new orleans
+city,baton rouge
+city,milwaukee
+city,madison
+city,indianapolis
+city,detroit
+city,grand rapids
+city,ann arbor
+city,richmond
+city,virginia beach
+city,vancouver
+city,toronto
+city,montreal
+city,ottawa
+city,calgary
+city,edmonton
+city,quebec city
+city,winnipeg
+city,halifax
+city,victoria
+city,london
+city,paris
+city,berlin
+city,munich
+city,frankfurt
+city,hamburg
+city,cologne
+city,stuttgart
+city,dusseldorf
+city,dresden
+city,leipzig
+city,hanover
+city,nuremberg
+city,bonn
+city,heidelberg
+city,rome
+city,milan
+city,venice
+city,florence
+city,naples
+city,turin
+city,bologna
+city,genoa
+city,pisa
+city,verona
+city,madrid
+city,barcelona
+city,valencia
+city,seville
+city,malaga
+city,bilbao
+city,amsterdam
+city,rotterdam
+city,the hague
+city,utrecht
+city,eindhoven
+city,leiden
+city,delft
+city,tilburg
+city,brussels
+city,antwerp
+city,ghent
+city,bruges
+city,leuven
+city,liege
+city,zurich
+city,geneva
+city,lausanne
+city,basel
+city,bern
+city,lucerne
+city,lugano
+city,vienna
+city,salzburg
+city,innsbruck
+city,graz
+city,linz
+city,prague
+city,brno
+city,budapest
+city,debrecen
+city,stockholm
+city,gothenburg
+city,malmo
+city,uppsala
+city,lund
+city,helsinki
+city,tampere
+city,espoo
+city,oulu
+city,copenhagen
+city,aarhus
+city,odense
+city,aalborg
+city,oslo
+city,bergen
+city,trondheim
+city,stavanger
+city,dublin
+city,cork
+city,galway
+city,limerick
+city,edinburgh
+city,glasgow
+city,manchester
+city,birmingham
+city,liverpool
+city,leeds
+city,bristol
+city,cardiff
+city,belfast
+city,lisbon
+city,porto
+city,athens
+city,thessaloniki
+city,warsaw
+city,krakow
+city,gdansk
+city,wroclaw
+city,poznan
+city,bucharest
+city,sofia
+city,zagreb
+city,split
+city,dubrovnik
+city,belgrade
+city,ljubljana
+city,bratislava
+city,tallinn
+city,riga
+city,vilnius
+city,moscow
+city,saint petersburg
+city,istanbul
+city,ankara
+city,izmir
+city,beijing
+city,shanghai
+city,guangzhou
+city,shenzhen
+city,taipei
+city,kaohsiung
+city,hsinchu
+city,tokyo
+city,osaka
+city,kyoto
+city,yokohama
+city,nagoya
+city,sapporo
+city,fukuoka
+city,seoul
+city,busan
+city,incheon
+city,daegu
+city,daejeon
+city,singapore
+city,bangalore
+city,mumbai
+city,delhi
+city,hyderabad
+city,chennai
+city,kolkata
+city,pune
+city,kuala lumpur
+city,penang
+city,jakarta
+city,bangkok
+city,hanoi
+city,ho chi minh city
+city,manila
+city,cebu
+city,sydney
+city,melbourne
+city,brisbane
+city,perth
+city,adelaide
+city,gold coast
+city,canberra
+city,auckland
+city,wellington
+city,christchurch
+city,haifa
+city,tel aviv
+city,jerusalem
+city,beer sheva
+city,eilat
+city,dubai
+city,abu dhabi
+city,doha
+city,manama
+city,riyadh
+city,jeddah
+city,cairo
+city,alexandria
+city,casablanca
+city,marrakech
+city,nairobi
+city,cape town
+city,johannesburg
+city,pretoria
+city,accra
+city,dakar
+city,buenos aires
+city,sao paulo
+city,rio de janeiro
+city,brasilia
+city,santiago
+city,lima
+city,bogota
+city,mexico city
+city,cancun
+city,guadalajara
+city,monterrey
+country,san juan
+country,usa
+country,united states
+country,america
+country,u.s.a.
+country,united states of america
+country,canada
+country,uk
+country,united kingdom
+country,england
+country,scotland
+country,wales
+country,great britain
+country,germany
+country,france
+country,italy
+country,spain
+country,netherlands
+country,holland
+country,belgium
+country,switzerland
+country,austria
+country,czech republic
+country,czechia
+country,hungary
+country,sweden
+country,finland
+country,denmark
+country,norway
+country,ireland
+country,portugal
+country,greece
+country,poland
+country,romania
+country,bulgaria
+country,croatia
+country,serbia
+country,slovenia
+country,slovakia
+country,estonia
+country,latvia
+country,lithuania
+country,russia
+country,turkey
+country,japan
+country,china
+country,korea
+country,south korea
+country,taiwan
+country,hong kong
+country,macau
+country,singapore
+country,india
+country,australia
+country,new zealand
+country,israel
+country,uae
+country,united arab emirates
+country,saudi arabia
+country,qatar
+country,bahrain
+country,egypt
+country,south africa
+country,kenya
+country,morocco
+country,nigeria
+country,ghana
+country,brazil
+country,argentina
+country,mexico
+country,chile
+country,colombia
+country,peru
+province,peru
+province,ontario
+province,quebec
+province,british columbia
+province,bc
+province,alberta
+province,manitoba
+province,saskatchewan
+province,nova scotia
+province,new brunswick
+province,new south wales
+province,victoria
+province,queensland
+province,western australia
+province,south australia
+province,tasmania
+state,act
+state,alabama
+state,alaska
+state,arizona
+state,arkansas
+state,california
+state,colorado
+state,connecticut
+state,delaware
+state,florida
+state,georgia
+state,hawaii
+state,idaho
+state,illinois
+state,indiana
+state,iowa
+state,kansas
+state,kentucky
+state,louisiana
+state,maine
+state,maryland
+state,massachusetts
+state,michigan
+state,minnesota
+state,mississippi
+state,missouri
+state,montana
+state,nebraska
+state,nevada
+state,new hampshire
+state,new jersey
+state,new mexico
+state,new york
+state,north carolina
+state,north dakota
+state,ohio
+state,oklahoma
+state,oregon
+state,pennsylvania
+state,rhode island
+state,south carolina
+state,south dakota
+state,tennessee
+state,texas
+state,utah
+state,vermont
+state,virginia
+state,washington
+state,west virginia
+state,wisconsin
+state,wyoming
+state,dc
+state,district of columbia
+
