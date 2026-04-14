@@ -1,6 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
+from importlib.resources import files
 
 from .cleanse import load_conferences, load_locations, load_expansions, process_bib, TARGET_FIELDS
 
@@ -8,10 +9,13 @@ from .cleanse import load_conferences, load_locations, load_expansions, process_
 # CLI
 # ===================================================================
 def main() -> None:
+    # 包内 data 目录的绝对路径（随安装位置走，不受 cwd 影响）
+    _data_dir = files("bibtex_cleanse") / "data"
+
     parser = argparse.ArgumentParser(description='Standardise conference/journal names in BibTeX.')
-    parser.add_argument('-f', '--conferences', default='data/conferences.csv', help='3-column CSV (abbr, match name, full name)')
-    parser.add_argument('-c', '--city', default='data/city.csv', help='Location database CSV (Type, Name)')
-    parser.add_argument('-s', '--short', default='data/short.csv', help='Abbreviation expansion rules (short.csv)')
+    parser.add_argument('-f', '--conferences', default=str(_data_dir / 'conferences.csv'), help='3-column CSV (abbr, match name, full name)')
+    parser.add_argument('-c', '--city', default=str(_data_dir / 'city.csv'), help='Location database CSV (Type, Name)')
+    parser.add_argument('-s', '--short', default=str(_data_dir / 'short.csv'), help='Abbreviation expansion rules (short.csv)')
     parser.add_argument('-i', '--input', required=True)
     parser.add_argument('-o', '--output', required=True)
     parser.add_argument('-t', '--threshold', type=float, default=80.0, help='Min score 0-100 (default: 80)')
