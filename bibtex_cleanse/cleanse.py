@@ -100,31 +100,31 @@ def load_conferences(csv_path: str):
         reader = csv.reader(fh)
         next(reader, None)
         for row in reader:
-            if len(row) < 2:
-                continue
-            abbr = row[0].strip()
-            if len(row) >= 3:
-                match_name = row[1].strip()
-                full_name = row[2].strip()
-            else:
-                match_name = full_name = row[1].strip()
+            if len(row) != 3:
+                raise ValueError(f'Invalid row format (expected 3 columns): {row}')
+            
+            abbr, match_name, full_name = (col.strip() for col in row)
+            
+            if not match_name or not full_name:
+                raise ValueError(f'Missing match_name or full_name in row: {row}')
                 
-            if match_name and full_name:
-                match_entries_all.append((match_name, full_name))
-                if abbr:
-                    match_entries_conference.append((match_name, full_name))
-                    abbr_to_full[abbr.lower()] = full_name
-                    if full_name not in full_to_abbr:
-                        full_to_abbr[full_name] = abbr
-
-    if not match_entries_all and not abbr_to_full:
-        raise ValueError(f'No names found in {csv_path}')
+            match_entries_all.append((match_name, full_name))
+            
+            if abbr:
+                match_entries_conference.append((match_name, full_name))
+                abbr_to_full[abbr.lower()] = full_name
+                if full_name not in full_to_abbr:
+                    full_to_abbr[full_name] = abbr
+                    
+    if not match_entries_all:
+        raise ValueError(f'No valid entries found in {csv_path}')
         
     return abbr_to_full, match_entries_all, match_entries_conference, full_to_abbr
 
 # ===================================================================
 # Booktitle simplification (ONLY for Conferences)
 # ===================================================================
+
 _MONTHS_RE = (
     r'(?:jan(?:uary)?\.?|feb(?:ruary)?\.?|mar(?:ch)?\.?|apr(?:il)?\.?|may\.?|'
     r'jun(?:e)?\.?|jul(?:y)?\.?|aug(?:ust)?\.?|sep(?:t(?:ember)?)?\.?|'
@@ -382,6 +382,7 @@ def find_match(
 # ===================================================================
 # BibTeX parser / transformer
 # ===================================================================
+
 def _next_entry_at(content: str, start: int) -> int:
     i = start
     while True:
@@ -554,8 +555,15 @@ def process_bib(
     if below_entries:
         print('\n[bibclean] Entries with unmatched target fields:', file=sys.stderr)
         for key in sorted(below_entries):
-            for fname, raw, score, compared_as in below_entries[key]:
-                print(f"  {key}: {fname} = '{raw}' (score={score}, compared-as '{compared_as}')", file=sys.stderr)
+            entries = below_entries[key]
+            # 计算最大长度，确保 = 号对齐（考虑 "compared-as" 的长度）
+            max_len = max(len(fname) for fname, _, _, _ in entries)
+            max_len = max(max_len, len("compared-as"))
+            
+            for fname, raw, score, compared_as in entries:
+                print(f"  {key}: {score}", file=sys.stderr)
+                print(f"    {fname:<{max_len}} = {raw}", file=sys.stderr)
+                print(f"    {'compared-as':<{max_len}} = {compared_as}", file=sys.stderr)
 
     return ''.join(out), results
 
