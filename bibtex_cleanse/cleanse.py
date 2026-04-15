@@ -1,11 +1,13 @@
 """conference_name.py - Standardise conference/journal names in a BibTeX file.
 CSV format (3 columns): Abbreviation, Match Name, Full Name
+
 Matching strategy (in priority order):
 1. Abbreviation from series/collection -> CSV abbreviation lookup
 2. Abbreviation extracted from field value -> CSV abbreviation lookup
 3. Fuzzy match (rapidfuzz):
    - Journal: Clean LaTeX + Lowercase ONLY
    - Conference: Deep-simplification pipeline
+
 Output convention:
 For conference-type fields (booktitle, conference), when a replacement is made, 
 the abbreviation is appended: "Full Name (ABBR)".
@@ -13,16 +15,19 @@ Journal-type fields (journal, journaltitle) keep the full name only.
 """
 
 from __future__ import annotations
+
 import argparse
 import csv
 import re
 import sys
 from pathlib import Path
+
 from rapidfuzz import fuzz
 
 # ===================================================================
 # Constants
 # ===================================================================
+
 TARGET_FIELDS = frozenset({'journal', 'journaltitle', 'booktitle', 'conference'})
 JOURNAL_FIELDS = frozenset({'journal', 'journaltitle'})
 CONFERENCE_FIELDS = frozenset({'booktitle', 'conference'})
@@ -30,6 +35,7 @@ CONFERENCE_FIELDS = frozenset({'booktitle', 'conference'})
 # ===================================================================
 # LaTeX cleaning
 # ===================================================================
+
 def strip_latex(raw: str) -> str:
     """Remove LaTeX markup, preserving word structure."""
     text = re.sub(
@@ -53,6 +59,7 @@ def clean_latex(text: str) -> str:
 # ===================================================================
 # External Data Loading
 # ===================================================================
+
 def load_expansions(short_path: str):
     expansions = []
     with Path(short_path).open(encoding='utf-8', newline='') as fh:
@@ -81,18 +88,20 @@ def load_locations(city_path: str) -> set[str]:
 
 def load_conferences(csv_path: str):
     p = Path(csv_path)
-    if not p.is_file(): raise FileNotFoundError(f'Conference list not found: {csv_path}')
+    if not p.is_file():
+        raise FileNotFoundError(f'Conference list not found: {csv_path}')
     
     abbr_to_full: dict[str, str] = {}
     match_entries_all: list[tuple[str, str]] = []
     match_entries_conference: list[tuple[str, str]] = []
     full_to_abbr: dict[str, str] = {}
-
+    
     with p.open(encoding='utf-8', newline='') as fh:
         reader = csv.reader(fh)
         next(reader, None)
         for row in reader:
-            if len(row) < 2: continue
+            if len(row) < 2:
+                continue
             abbr = row[0].strip()
             if len(row) >= 3:
                 match_name = row[1].strip()
@@ -108,7 +117,9 @@ def load_conferences(csv_path: str):
                     if full_name not in full_to_abbr:
                         full_to_abbr[full_name] = abbr
 
-    if not match_entries_all and not abbr_to_full: raise ValueError(f'No names found in {csv_path}')
+    if not match_entries_all and not abbr_to_full:
+        raise ValueError(f'No names found in {csv_path}')
+        
     return abbr_to_full, match_entries_all, match_entries_conference, full_to_abbr
 
 # ===================================================================
@@ -204,6 +215,7 @@ def _remove_trailing_noise(text: str, locations_set: set[str]) -> str:
 
         # 遇到正常的非噪音词汇，停止清理
         break
+        
     return ','.join(parts).strip().rstrip('.')
 
 def simplify_booktitle(raw: str, expansions: list, abbr_to_full: dict, locations_set: set[str]) -> str:
@@ -252,9 +264,11 @@ def simplify_booktitle(raw: str, expansions: list, abbr_to_full: dict, locations
 # ===================================================================
 # Abbreviation extraction
 # ===================================================================
+
 def extract_series_abbr(text: str):
     cleaned = clean_latex(text).strip()
-    if not cleaned: return None
+    if not cleaned:
+        return None
     cleaned = re.sub(r"[,;\s]*[''\u2019\u2018]\s*(?:19|20)?\d{2}\b", '', cleaned)
     cleaned = re.sub(r'[,;\s]+(?:19|20)\d{2}\b', '', cleaned)
     cleaned = re.sub(r'[,;\s]+$', '', cleaned).strip()
@@ -265,18 +279,18 @@ def extract_name_abbrs(text: str):
     cleaned = clean_latex(text)
     if not cleaned:
         return
-        
+
     # 规则 1: 括号内提取
     for m in re.finditer(r"\(([A-Za-z][A-Za-z0-9+-]*(?:\s+[A-Za-z0-9+-]+)*)\)", cleaned):
         abbr = m.group(1).strip()
         abbr = re.sub(r'\s+(?:19|20)\d{2}$', '', abbr)
         if abbr:
             yield abbr
-            
+
     # 规则 2: 大写开头词 + 年份（不再一碰到就 return，而是遍历所有匹配）
     for m in re.finditer(r"([A-Z][A-Za-z0-9+-]{1,14})\s*[''\u2019]?\s*(?:19|20)?\d{2}\b", cleaned):
         yield m.group(1).strip()
-        
+
     # 规则 3: 逗号后的词
     for m in re.finditer(r',\s*([A-Z][A-Za-z0-9+-]{1,14})\s*[.,]?\s*$', cleaned):
         yield m.group(1)
@@ -284,8 +298,10 @@ def extract_name_abbrs(text: str):
 # ===================================================================
 # Fuzzy matching
 # ===================================================================
+
 def fuzzy_match_best(cleaned_value: str, entries: list[tuple[str, str]]):
-    if not cleaned_value: return None, 0.0
+    if not cleaned_value:
+        return None, 0.0
     best_full, best_score = None, 0.0
     for match_name, full_name in entries:
         score = (
@@ -301,23 +317,54 @@ def fuzzy_match_best(cleaned_value: str, entries: list[tuple[str, str]]):
 # ===================================================================
 # Three-tier matching
 # ===================================================================
+
 def find_match(
-    field_value, field_name, series_abbr, abbr_to_full, match_entries_all, 
+    field_value, field_name, series_abbr, abbr_to_full, match_entries_all,
     match_entries_conference, threshold, expansions, locations_set
 ):
-    if series_abbr is not None:
-        full = abbr_to_full.get(series_abbr.lower())
-        if full:
-            return full, 100.0, 'series'
-
     # 只从会议名称中提取缩写，期刊名称跳过此步骤
     if field_name in CONFERENCE_FIELDS:
-        for name_abbr in extract_name_abbrs(field_value):
-            full = abbr_to_full.get(name_abbr.lower())
-            if full:
-                return full, 100.0, 'name-abbr'
+        # 1. 确定提取的 series 会议缩写 (互斥操作)
+        extracted_abbr = None
+        if series_abbr is not None:
+            extracted_abbr = series_abbr.strip()
+        else:
+            # 如果没有 series 字段，从 field_value 中提取第一个候选
+            extracted_abbr = next(extract_name_abbrs(field_value), None)
+            if extracted_abbr:
+                extracted_abbr = extracted_abbr.strip()
+        
+        # 查找该提取缩写对应的全名
+        series_full = abbr_to_full.get(extracted_abbr.lower()) if extracted_abbr else None
 
-    if field_name in JOURNAL_FIELDS:
+        # 2. 无论如何，都执行 simplify_booktitle 和 fuzzy_match_best
+        entries = match_entries_conference
+        compared_as = simplify_booktitle(field_value, expansions, abbr_to_full, locations_set)
+        best_full, best_score = fuzzy_match_best(compared_as, entries)
+
+        # 3. 二选一逻辑及冲突判定
+        if series_full is not None:
+            # 存在提取到的 series 全名
+            if best_full is None or best_score < threshold:
+                # fuzzy 失败或得分不足，使用 series 抽取结果
+                return series_full, 100.0, 'series', compared_as, extracted_abbr
+            else:
+                # fuzzy 得分达到阈值
+                if best_full == series_full:
+                    # 结果一致，没有问题，使用 series 结果记录
+                    return series_full, 100.0, 'series', compared_as, extracted_abbr
+                else:
+                    # 结果不一致，使用 fuzzy 结果，并报告该不一致
+                    return best_full, best_score, 'fuzzy-conflict', compared_as, extracted_abbr
+        else:
+            # 没有提取到有效的 series 全名，完全依赖 fuzzy 结果
+            if best_full and best_score >= threshold:
+                return best_full, best_score, 'fuzzy', compared_as, None
+            else:
+                return None, best_score, 'below-threshold', compared_as, None
+
+    else:
+        # 期刊逻辑保持不变
         entries = match_entries_all
         compared_as = clean_latex(field_value).lower()
         compared_as = _apply_expansions(compared_as, expansions)
@@ -325,15 +372,12 @@ def find_match(
         # 将 &, -, / 替换为空格，解体粘合的单词以提升匹配率
         compared_as = re.sub(r'[:&,/-]', ' ', compared_as)
         compared_as = re.sub(r'\s+', ' ', compared_as).strip()
-    else:
-        entries = match_entries_conference
-        compared_as = simplify_booktitle(field_value, expansions, abbr_to_full, locations_set)
 
-    best_full, best_score = fuzzy_match_best(compared_as, entries)
-    if best_full and best_score >= threshold:
-        return best_full, best_score, 'fuzzy'
-        
-    return None, best_score, 'below-threshold'
+        best_full, best_score = fuzzy_match_best(compared_as, entries)
+        if best_full and best_score >= threshold:
+            return best_full, best_score, 'fuzzy', compared_as, None
+
+        return None, best_score, 'below-threshold', compared_as, None
 
 # ===================================================================
 # BibTeX parser / transformer
@@ -342,15 +386,19 @@ def _next_entry_at(content: str, start: int) -> int:
     i = start
     while True:
         i = content.find('@', i)
-        if i == -1: return -1
-        if i + 1 < len(content) and (content[i + 1].isalpha() or content[i + 1] == '_'): return i
+        if i == -1:
+            return -1
+        if i + 1 < len(content) and (content[i + 1].isalpha() or content[i + 1] == '_'):
+            return i
         i += 1
 
 def _matching_brace(content: str, open_pos: int) -> int:
     depth, pos = 1, open_pos + 1
     while pos < len(content) and depth > 0:
-        if content[pos] == '{': depth += 1
-        elif content[pos] == '}': depth -= 1
+        if content[pos] == '{':
+            depth += 1
+        elif content[pos] == '}':
+            depth -= 1
         pos += 1
     return pos
 
@@ -359,18 +407,22 @@ def _read_value(inner: str, start: int):
     if ch == '{':
         depth, pos = 1, start + 1
         while pos < len(inner) and depth > 0:
-            if inner[pos] == '{': depth += 1
-            elif inner[pos] == '}': depth -= 1
+            if inner[pos] == '{':
+                depth += 1
+            elif inner[pos] == '}':
+                depth -= 1
             pos += 1
         return pos, inner[start:pos]
     if ch == '"':
         pos = start + 1
         while pos < len(inner) and inner[pos] != '"':
-            if inner[pos] == '\\': pos += 1
+            if inner[pos] == '\\':
+                pos += 1
             pos += 1
         return pos + 1, inner[start:pos + 1]
     pos = start
-    while pos < len(inner) and inner[pos] not in ',}': pos += 1
+    while pos < len(inner) and inner[pos] not in ',}':
+        pos += 1
     return pos, inner[start:pos].strip()
 
 def _extract_series_from_inner(inner: str):
@@ -380,11 +432,12 @@ def _extract_series_from_inner(inner: str):
         if m and m.end() < len(inner):
             _, raw = _read_value(inner, m.end())
             abbr = extract_series_abbr(raw)
-            if abbr: return abbr
+            if abbr:
+                return abbr
     return None
 
 def process_bib(
-    content, abbr_to_full, match_entries_all, match_entries_conference, 
+    content, abbr_to_full, match_entries_all, match_entries_conference,
     threshold, expansions, full_to_abbr, locations_set
 ):
     results = []
@@ -396,49 +449,85 @@ def process_bib(
         entry_start = _next_entry_at(content, cursor)
         if entry_start == -1:
             out.append(content[cursor:]); break
+            
         out.append(content[cursor:entry_start])
         brace = content.find('{', entry_start)
         if brace == -1:
             out.append(content[entry_start:]); break
+            
         close = _matching_brace(content, brace)
         inner = content[brace + 1 : close - 1]
         comma = inner.find(',')
+        
         if comma == -1:
             out.append(content[entry_start:close]); cursor = close; continue
+            
         entry_key = inner[:comma].strip()
         out.append(content[entry_start : brace + 1 + comma + 1])
+        
         series_abbr = _extract_series_from_inner(inner)
+        
         fpos = comma + 1
 
         while fpos < len(inner):
             ws = fpos
-            while fpos < len(inner) and inner[fpos] in ' \t\n\r': fpos += 1
+            while fpos < len(inner) and inner[fpos] in ' \t\n\r':
+                fpos += 1
             if fpos >= len(inner):
                 out.append(inner[ws:]); break
+                
             eq = inner.find('=', fpos)
             if eq == -1:
                 out.append(inner[fpos:]); break
+                
             field_name = inner[fpos:eq].strip().lower()
             out.append(inner[ws : eq + 1])
             fpos = eq + 1
+            
             ws2 = fpos
-            while fpos < len(inner) and inner[fpos] in ' \t\n\r': fpos += 1
+            while fpos < len(inner) and inner[fpos] in ' \t\n\r':
+                fpos += 1
             out.append(inner[ws2:fpos])
-            if fpos >= len(inner): break
+            
+            if fpos >= len(inner):
+                break
+                
             end, raw = _read_value(inner, fpos)
             fpos = end
-
+            
             if field_name in TARGET_FIELDS:
-                repl, score, method = find_match(
-                    raw, field_name, series_abbr, abbr_to_full, 
-                    match_entries_all, match_entries_conference, threshold, expansions, locations_set
+                # 解包新增的 compared_as 和 extracted_abbr
+                repl, score, method, compared_as, extracted_abbr = find_match(
+                    raw, field_name, series_abbr, abbr_to_full, match_entries_all, 
+                    match_entries_conference, threshold, expansions, locations_set
                 )
-                results.append({
-                    'key': entry_key, 'field': field_name, 'raw': clean_latex(raw),
-                    'matched': repl, 'score': round(score, 1), 'method': method
-                })
                 
-                if repl is not None:
+                results.append({
+                    'key': entry_key,
+                    'field': field_name,
+                    'raw': clean_latex(raw),
+                    'matched': repl,
+                    'score': round(score, 1),
+                    'method': method
+                })
+
+                if method == 'fuzzy-conflict':
+                    fuzzy_abbr = full_to_abbr.get(repl, "N/A")
+                    print(
+                        f"\n[bibclean] WARNING: Series/Fuzzy mismatch for {entry_key}:\n"
+                        f"  Original Name : {clean_latex(raw)}\n"
+                        f"  Simplified    : {compared_as}\n"
+                        f"  Fuzzy Match   : {fuzzy_abbr}\n"
+                        f"  Series Extract: {extracted_abbr}",
+                        file=sys.stderr
+                    )
+                    # 发生冲突时，使用 find_match (即 fuzzy) 的结果
+                    if field_name in CONFERENCE_FIELDS and repl in full_to_abbr:
+                        abbr = full_to_abbr[repl]
+                        out.append('{' + repl + ' (' + abbr + ')}')
+                    else:
+                        out.append('{' + repl + '}')
+                elif repl is not None:
                     if field_name in CONFERENCE_FIELDS and repl in full_to_abbr:
                         abbr = full_to_abbr[repl]
                         out.append('{' + repl + ' (' + abbr + ')}')
@@ -446,23 +535,19 @@ def process_bib(
                         out.append('{' + repl + '}')
                 else:
                     out.append(raw)
-                    
-                if repl is None:
-                    if field_name in JOURNAL_FIELDS:
-                        compared_as_log = clean_latex(raw).lower()
-                    else:
-                        compared_as_log = simplify_booktitle(raw, expansions, abbr_to_full, locations_set)
                     below_entries.setdefault(entry_key, []).append(
-                        (field_name, clean_latex(raw), round(score, 1), compared_as_log)
+                        (field_name, clean_latex(raw), round(score, 1), compared_as)
                     )
             else:
                 out.append(raw)
-
+                
             ws3 = fpos
-            while fpos < len(inner) and inner[fpos] in ' \t\n\r': fpos += 1
+            while fpos < len(inner) and inner[fpos] in ' \t\n\r':
+                fpos += 1
             out.append(inner[ws3:fpos])
             if fpos < len(inner) and inner[fpos] == ',':
                 out.append(','); fpos += 1
+                
         out.append(content[close - 1])
         cursor = close
 
@@ -470,6 +555,7 @@ def process_bib(
         print('\n[bibclean] Entries with unmatched target fields:', file=sys.stderr)
         for key in sorted(below_entries):
             for fname, raw, score, compared_as in below_entries[key]:
-                print(f" {key}: {fname} = '{raw}' (score={score}, compared-as '{compared_as}')", file=sys.stderr)
+                print(f"  {key}: {fname} = '{raw}' (score={score}, compared-as '{compared_as}')", file=sys.stderr)
+
     return ''.join(out), results
 
