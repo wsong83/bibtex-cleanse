@@ -15,13 +15,10 @@ Journal-type fields (journal, journaltitle) keep the full name only.
 """
 
 from __future__ import annotations
-
-import argparse
 import csv
 import re
 import sys
 from pathlib import Path
-
 from rapidfuzz import fuzz
 
 # ===================================================================
@@ -382,188 +379,84 @@ def find_match(
 # ===================================================================
 # BibTeX parser / transformer
 # ===================================================================
-
-def _next_entry_at(content: str, start: int) -> int:
-    i = start
-    while True:
-        i = content.find('@', i)
-        if i == -1:
-            return -1
-        if i + 1 < len(content) and (content[i + 1].isalpha() or content[i + 1] == '_'):
-            return i
-        i += 1
-
-def _matching_brace(content: str, open_pos: int) -> int:
-    depth, pos = 1, open_pos + 1
-    while pos < len(content) and depth > 0:
-        if content[pos] == '{':
-            depth += 1
-        elif content[pos] == '}':
-            depth -= 1
-        pos += 1
-    return pos
-
-def _read_value(inner: str, start: int):
-    ch = inner[start]
-    if ch == '{':
-        depth, pos = 1, start + 1
-        while pos < len(inner) and depth > 0:
-            if inner[pos] == '{':
-                depth += 1
-            elif inner[pos] == '}':
-                depth -= 1
-            pos += 1
-        return pos, inner[start:pos]
-    if ch == '"':
-        pos = start + 1
-        while pos < len(inner) and inner[pos] != '"':
-            if inner[pos] == '\\':
-                pos += 1
-            pos += 1
-        return pos + 1, inner[start:pos + 1]
-    pos = start
-    while pos < len(inner) and inner[pos] not in ',}':
-        pos += 1
-    return pos, inner[start:pos].strip()
-
-def _extract_series_from_inner(inner: str):
-    for fname in ('series', 'collection'):
-        pattern = re.compile(re.escape(fname) + r'\s*=\s*', re.IGNORECASE)
-        m = pattern.search(inner)
-        if m and m.end() < len(inner):
-            _, raw = _read_value(inner, m.end())
-            abbr = extract_series_abbr(raw)
-            if abbr:
-                return abbr
-    return None
-
 def process_bib(
-    content, abbr_to_full, match_entries_all, match_entries_conference,
+    filepath: str,
+    abbr_to_full, match_entries_all, match_entries_conference,
     threshold, expansions, full_to_abbr, locations_set
 ):
+    """解析 BibTeX 文件，标准化目标字段，返回修改后的条目字典列表。"""
+    # 延迟导入，避免循环依赖，并使用统一的解析模块
+    from .bibtex_parse import parse_bibtex
+    
+    entries = parse_bibtex(filepath)
     results = []
     below_entries: dict[str, list] = {}
-    out: list[str] = []
-    cursor = 0
 
-    while cursor < len(content):
-        entry_start = _next_entry_at(content, cursor)
-        if entry_start == -1:
-            out.append(content[cursor:]); break
-            
-        out.append(content[cursor:entry_start])
-        brace = content.find('{', entry_start)
-        if brace == -1:
-            out.append(content[entry_start:]); break
-            
-        close = _matching_brace(content, brace)
-        inner = content[brace + 1 : close - 1]
-        comma = inner.find(',')
+    for entry in entries:
+        entry_key = entry.get('key', 'UNKNOWN')
         
-        if comma == -1:
-            out.append(content[entry_start:close]); cursor = close; continue
-            
-        entry_key = inner[:comma].strip()
-        out.append(content[entry_start : brace + 1 + comma + 1])
-        
-        series_abbr = _extract_series_from_inner(inner)
-        
-        fpos = comma + 1
+        # 1. 从字典中直接提取 series/collection，远比正则扒取简单可靠
+        series_raw = entry.get('series') or entry.get('collection')
+        series_abbr = extract_series_abbr(series_raw) if series_raw else None
 
-        while fpos < len(inner):
-            ws = fpos
-            while fpos < len(inner) and inner[fpos] in ' \t\n\r':
-                fpos += 1
-            if fpos >= len(inner):
-                out.append(inner[ws:]); break
+        # 2. 遍历当前条目的所有字段
+        for field_name in list(entry.keys()):
+            if field_name not in TARGET_FIELDS:
+                continue
                 
-            eq = inner.find('=', fpos)
-            if eq == -1:
-                out.append(inner[fpos:]); break
-                
-            field_name = inner[fpos:eq].strip().lower()
-            out.append(inner[ws : eq + 1])
-            fpos = eq + 1
+            raw_value = entry[field_name]
             
-            ws2 = fpos
-            while fpos < len(inner) and inner[fpos] in ' \t\n\r':
-                fpos += 1
-            out.append(inner[ws2:fpos])
+            # 调用原有匹配逻辑
+            repl, score, method, compared_as, extracted_abbr = find_match(
+                raw_value, field_name, series_abbr, abbr_to_full,
+                match_entries_all, match_entries_conference, threshold, 
+                expansions, locations_set
+            )
             
-            if fpos >= len(inner):
-                break
-                
-            end, raw = _read_value(inner, fpos)
-            fpos = end
-            
-            if field_name in TARGET_FIELDS:
-                # 解包新增的 compared_as 和 extracted_abbr
-                repl, score, method, compared_as, extracted_abbr = find_match(
-                    raw, field_name, series_abbr, abbr_to_full, match_entries_all, 
-                    match_entries_conference, threshold, expansions, locations_set
+            results.append({
+                'key': entry_key,
+                'field': field_name,
+                'raw': clean_latex(raw_value),
+                'matched': repl,
+                'score': round(score, 1),
+                'method': method
+            })
+
+            # 处理冲突警告
+            if method == 'fuzzy-conflict':
+                fuzzy_abbr = full_to_abbr.get(repl, "N/A")
+                print(
+                    f"\n[bibclean] WARNING: Series/Fuzzy mismatch for {entry_key}:\n"
+                    f" Original Name : {clean_latex(raw_value)}\n"
+                    f" Simplified : {compared_as}\n"
+                    f" Fuzzy Match : {fuzzy_abbr}\n"
+                    f" Series Extract: {extracted_abbr}", file=sys.stderr
                 )
-                
-                results.append({
-                    'key': entry_key,
-                    'field': field_name,
-                    'raw': clean_latex(raw),
-                    'matched': repl,
-                    'score': round(score, 1),
-                    'method': method
-                })
 
-                if method == 'fuzzy-conflict':
-                    fuzzy_abbr = full_to_abbr.get(repl, "N/A")
-                    print(
-                        f"\n[bibclean] WARNING: Series/Fuzzy mismatch for {entry_key}:\n"
-                        f"  Original Name : {clean_latex(raw)}\n"
-                        f"  Simplified    : {compared_as}\n"
-                        f"  Fuzzy Match   : {fuzzy_abbr}\n"
-                        f"  Series Extract: {extracted_abbr}",
-                        file=sys.stderr
-                    )
-                    # 发生冲突时，使用 find_match (即 fuzzy) 的结果
-                    if field_name in CONFERENCE_FIELDS and repl in full_to_abbr:
-                        abbr = full_to_abbr[repl]
-                        out.append('{' + repl + ' (' + abbr + ')}')
-                    else:
-                        out.append('{' + repl + '}')
-                elif repl is not None:
-                    if field_name in CONFERENCE_FIELDS and repl in full_to_abbr:
-                        abbr = full_to_abbr[repl]
-                        out.append('{' + repl + ' (' + abbr + ')}')
-                    else:
-                        out.append('{' + repl + '}')
+            # 3. 命中则直接修改字典中的值
+            if repl is not None:
+                if field_name in CONFERENCE_FIELDS and repl in full_to_abbr:
+                    abbr = full_to_abbr[repl]
+                    entry[field_name] = f"{repl} ({abbr})"
                 else:
-                    out.append(raw)
-                    below_entries.setdefault(entry_key, []).append(
-                        (field_name, clean_latex(raw), round(score, 1), compared_as)
-                    )
+                    entry[field_name] = repl
             else:
-                out.append(raw)
-                
-            ws3 = fpos
-            while fpos < len(inner) and inner[fpos] in ' \t\n\r':
-                fpos += 1
-            out.append(inner[ws3:fpos])
-            if fpos < len(inner) and inner[fpos] == ',':
-                out.append(','); fpos += 1
-                
-        out.append(content[close - 1])
-        cursor = close
+                below_entries.setdefault(entry_key, []).append(
+                    (field_name, clean_latex(raw_value), round(score, 1), compared_as)
+                )
 
     if below_entries:
         print('\n[bibclean] Entries with unmatched target fields:', file=sys.stderr)
         for key in sorted(below_entries):
-            entries = below_entries[key]
+            unmatched_fields = below_entries[key]  # <-- 改这里
             # 计算最大长度，确保 = 号对齐（考虑 "compared-as" 的长度）
-            max_len = max(len(fname) for fname, _, _, _ in entries)
+            max_len = max(len(fname) for fname, _, _, _ in unmatched_fields)
             max_len = max(max_len, len("compared-as"))
-            
-            for fname, raw, score, compared_as in entries:
-                print(f"  {key}: {score}", file=sys.stderr)
-                print(f"    {fname:<{max_len}} = {raw}", file=sys.stderr)
-                print(f"    {'compared-as':<{max_len}} = {compared_as}", file=sys.stderr)
+            for fname, raw, score, compared_as in unmatched_fields:
+                print(f" {key}: {score}", file=sys.stderr)
+                print(f" {fname:<{max_len}} = {raw}", file=sys.stderr)
+                print(f" {'compared-as':<{max_len}} = {compared_as}", file=sys.stderr)
 
-    return ''.join(out), results
+    # 返回修改后的字典列表，交由 write 模块处理
+    return entries, results
 

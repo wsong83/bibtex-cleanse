@@ -4,6 +4,7 @@ from pathlib import Path
 from importlib.resources import files
 
 from .cleanse import load_conferences, load_locations, load_expansions, process_bib, TARGET_FIELDS
+from .bibtex_write import format_bibtex # 导入写回模块
 
 # ===================================================================
 # CLI
@@ -37,7 +38,8 @@ def main() -> None:
         print(f'Error: {exc}', file=sys.stderr); sys.exit(1)
 
     try:
-        content = Path(args.input).read_text(encoding='utf-8')
+        if not Path(args.input).is_file():
+            raise FileNotFoundError(f"Input file not found: {args.input}")
     except (FileNotFoundError, ValueError) as exc:
         print(f'Error: {exc}', file=sys.stderr); sys.exit(1)
 
@@ -45,14 +47,21 @@ def main() -> None:
     print(f"[bibclean] target: {', '.join(sorted(TARGET_FIELDS))}", file=sys.stderr)
     print(f'[bibclean] threshold = {args.threshold}\n', file=sys.stderr)
 
-    new_content, results = process_bib(content, abbr_to_full, match_all, match_conf, args.threshold, expansions, full_to_abbr, locations_set)
+    # 传入 filepath 而不是 content
+    entries, results = process_bib(
+        args.input, abbr_to_full, match_all, match_conf, args.threshold, expansions, full_to_abbr, locations_set
+    )
 
     n_total = len(results)
     n_replaced = sum(1 for r in results if r['matched'] is not None)
     avg_score = sum(r['score'] for r in results) / n_total if n_total else 0.0
 
     print(f'\n[bibclean] done: {n_total} target field(s) checked, {n_replaced} replaced, {n_total - n_replaced} kept, average score {avg_score:.1f}.', file=sys.stderr)
-    Path(args.output).write_text(new_content, encoding='utf-8')
+
+    # 调用写回模块，自动按字母排序并生成文本
+    output_content = format_bibtex(entries)
+    Path(args.output).write_text(output_content, encoding='utf-8')
+    
     print(f'[bibclean] output written to {args.output}', file=sys.stderr)
 
 if __name__ == '__main__':
