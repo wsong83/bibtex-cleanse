@@ -31,42 +31,18 @@ CONFERENCE_FIELDS = frozenset({'booktitle', 'conference'})
 
 # 月份全拼到三字母小写的映射表
 _MONTH_STD = {
-    'january': 'jan',
-    'jan': 'jan',
-    '1': 'jan',
-    'february': 'feb',
-    'feb': 'feb',
-    '2': 'feb',
-    'march': 'mar',
-    'mar': 'mar',
-    '3': 'mar',
-    'april': 'apr',
-    'apr': 'apr',
-    '4': 'apr',
-    'may': 'may',
-    '5': 'may',
-    'june': 'jun',
-    'jun': 'jun',
-    '6': 'jun',
-    'july': 'jul',
-    'jul': 'jul',
-    '7': 'jul',
-    'august': 'aug',
-    'aug': 'aug',
-    '8': 'aug',
-    'september': 'sep',
-    'sept': 'sep',
-    'sep': 'sep',
-    '9': 'sep',
-    'october': 'oct',
-    'oct': 'oct',
-    '10': 'oct',
-    'november': 'nov',
-    'nov': 'nov',
-    '11': 'nov',
-    'december': 'dec',
-    'dec': 'dec',
-    '12': 'dec',
+    'january': 'jan', 'jan': 'jan', '1': 'jan',
+    'february': 'feb', 'feb': 'feb', '2': 'feb',
+    'march': 'mar', 'mar': 'mar', '3': 'mar',
+    'april': 'apr', 'apr': 'apr', '4': 'apr',
+    'may': 'may', '5': 'may',
+    'june': 'jun', 'jun': 'jun', '6': 'jun',
+    'july': 'jul', 'jul': 'jul', '7': 'jul',
+    'august': 'aug', 'aug': 'aug', '8': 'aug',
+    'september': 'sep', 'sept': 'sep', 'sep': 'sep', '9': 'sep',
+    'october': 'oct', 'oct': 'oct', '10': 'oct',
+    'november': 'nov', 'nov': 'nov', '11': 'nov',
+    'december': 'dec', 'dec': 'dec', '12': 'dec',
 }
 
 # ===================================================================
@@ -255,48 +231,70 @@ def _remove_trailing_noise(text: str, locations_set: set[str]) -> str:
         
     return ','.join(parts).strip().rstrip('.')
 
-def simplify_booktitle(raw: str, expansions: list, abbr_to_full: dict, locations_set: set[str]) -> str:
-    """Simplify a CONFERENCE name for fuzzy matching."""
+# 提取年份和月份的辅助函数
+def _extract_year(text: str) -> str | None:
+    m = re.search(r'\b((?:19|20)\d{2})\b', text)
+    return m.group(1) if m else None
+
+def _extract_month(text: str) -> str | None:
+    m = re.search(
+        r'\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b',
+        text, re.IGNORECASE
+    )
+    if m:
+        raw_m = m.group(1).strip('.').lower()
+        return _MONTH_STD.get(raw_m)
+    return None
+
+def simplify_booktitle(raw: str, expansions: list, abbr_to_full: dict, locations_set: set[str]) -> tuple[str, str | None, str | None]:
+    """Simplify a CONFERENCE name for fuzzy matching.
+    返回: (simplified_text, extracted_year, extracted_month)
+    """
     # 1. Latex剥离
     text = strip_latex(raw)
-    # 2. 去除所有括号和其内部的字符
+    
+    # 2. [新增] 在去除括号等清理操作之前，提前提取年份和月份
+    extracted_year = _extract_year(text)
+    extracted_month = _extract_month(text)
+    
+    # 3. 去除所有括号和其内部的字符
     text = re.sub(r'\([^)]*\)', ' ', text)
     text = re.sub(r'\[[^\]]*\]', ' ', text)
     
-    # 3. 提前统一变成小写
+    # 4. 提前统一变成小写
     text = text.lower()
     
-    # 4. 按照conferences.csv中的会议缩写，仅去除带有年份后缀的缩写，保留仅有缩写的情况
+    # 5. 按照conferences.csv中的会议缩写，仅去除带有年份后缀的缩写，保留仅有缩写的情况
     for abbr in abbr_to_full.keys():
         abbr_pattern = re.compile(
             rf"(?<![a-z0-9]){re.escape(abbr)}(?:['\u2019\-\s](?:19|20)?\d{{2}})(?![a-z0-9])"
         )
         text = abbr_pattern.sub(' ', text)
-        
-    # 5. 利用short.csv补全缩写 (提前执行，防止后续去噪步骤吃掉缩写尾部的标点)
+    
+    # 6. 利用short.csv补全缩写 (提前执行，防止后续去噪步骤吃掉缩写尾部的标点)
     text = _apply_expansions(text, expansions)
     
-    # 6. 去除各式各样的日期组合及纯月份 (不限位置，全文本捕获)
+    # 7. 去除各式各样的日期组合及纯月份 (不限位置，全文本捕获)
     text = _DATE_BLOCK_RE.sub(' ', text)
     
-    # 7. 去除表示第几次的序数词修饰 (如 1st, 2nd, 24th)
+    # 8. 去除表示第几次的序数词修饰 (如 1st, 2nd, 24th)
     text = re.sub(r'\b\d+(?:st|nd|rd|th)\b', ' ', text)
     
-    # 8. 去除首部的纯年份 (如 2019 ieee...)
+    # 9. 去除首部的纯年份 (如 2019 ieee...)
     text = re.sub(r'^\s*(?:19|20)\d{2}[\s:,\-]*', '', text)
     
-    # 9. 去掉尾部的噪音 (基于精准的逐段剥离机制)
+    # 10. 去掉尾部的噪音 (基于精准的逐段剥离机制)
     text = _remove_trailing_noise(text, locations_set)
     
-    # 10. 去掉首部或逗号后的proceedings (on/of/the完全可选，即使无附加单词也整体去掉)
+    # 11. 去掉首部或逗号后的proceedings (on/of/the完全可选，即使无附加单词也整体去掉)
     # 注意：结尾使用 \s* 而不是 \s+，确保 "proceedings" 单独存在时也能被完全删除
     text = re.sub(r'(?:(?:^|,)\s*)proceedings(?:\s+(?:of|the|on))*\s*', '', text)
-
-    # 11. remove : & , / -
+    
+    # 12. remove : & , / -
     text = re.sub(r'[:&,/-]+', ' ', text)
-
+    
     # 最终清理多余空格
-    return re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r'\s+', ' ', text).strip(), extracted_year, extracted_month
 
 # ===================================================================
 # Abbreviation extraction
@@ -373,33 +371,32 @@ def find_match(
         
         # 查找该提取缩写对应的全名
         series_full = abbr_to_full.get(extracted_abbr.lower()) if extracted_abbr else None
-
+        
         # 2. 无论如何，都执行 simplify_booktitle 和 fuzzy_match_best
         entries = match_entries_conference
-        compared_as = simplify_booktitle(field_value, expansions, abbr_to_full, locations_set)
+        compared_as, extracted_year, extracted_month = simplify_booktitle(field_value, expansions, abbr_to_full, locations_set)
         best_full, best_score = fuzzy_match_best(compared_as, entries)
-
+        
         # 3. 二选一逻辑及冲突判定
         if series_full is not None:
             # 存在提取到的 series 全名
             if best_full is None or best_score < threshold:
                 # fuzzy 失败或得分不足，使用 series 抽取结果
-                return series_full, 100.0, 'series', compared_as, extracted_abbr
+                return series_full, 100.0, 'series', compared_as, extracted_abbr, extracted_year, extracted_month
             else:
                 # fuzzy 得分达到阈值
                 if best_full == series_full:
                     # 结果一致，没有问题，使用 series 结果记录
-                    return series_full, 100.0, 'series', compared_as, extracted_abbr
+                    return series_full, 100.0, 'series', compared_as, extracted_abbr, extracted_year, extracted_month
                 else:
                     # 结果不一致，使用 fuzzy 结果，并报告该不一致
-                    return best_full, best_score, 'fuzzy-conflict', compared_as, extracted_abbr
+                    return best_full, best_score, 'fuzzy-conflict', compared_as, extracted_abbr, extracted_year, extracted_month
         else:
             # 没有提取到有效的 series 全名，完全依赖 fuzzy 结果
             if best_full and best_score >= threshold:
-                return best_full, best_score, 'fuzzy', compared_as, None
+                return best_full, best_score, 'fuzzy', compared_as, None, extracted_year, extracted_month
             else:
-                return None, best_score, 'below-threshold', compared_as, None
-
+                return None, best_score, 'below-threshold', compared_as, None, extracted_year, extracted_month
     else:
         # 期刊逻辑保持不变
         entries = match_entries_all
@@ -412,9 +409,9 @@ def find_match(
 
         best_full, best_score = fuzzy_match_best(compared_as, entries)
         if best_full and best_score >= threshold:
-            return best_full, best_score, 'fuzzy', compared_as, None
+            return best_full, best_score, 'fuzzy', compared_as, None, None, None
 
-        return None, best_score, 'below-threshold', compared_as, None
+        return None, best_score, 'below-threshold', compared_as, None, None, None
 
 # ===================================================================
 # BibTeX parser / transformer
@@ -456,10 +453,9 @@ def process_bib(
             raw_value = entry[field_name]
             
             # 调用原有匹配逻辑
-            repl, score, method, compared_as, extracted_abbr = find_match(
-                raw_value, field_name, series_abbr, abbr_to_full,
-                match_entries_all, match_entries_conference, threshold, 
-                expansions, locations_set
+            repl, score, method, compared_as, extracted_abbr, extracted_year, extracted_month = find_match(
+                raw_value, field_name, series_abbr, abbr_to_full, match_entries_all,
+                match_entries_conference, threshold, expansions, locations_set
             )
             
             results.append({
@@ -482,7 +478,27 @@ def process_bib(
                     f" Series Extract: {extracted_abbr}", file=sys.stderr
                 )
 
-            # 3. 命中则直接修改字典中的值
+            # 年份与月份的验证和补全逻辑
+            if field_name in CONFERENCE_FIELDS:
+                # --- 验证与补全 Year ---
+                orig_year = entry.get('year', '').strip()
+                if extracted_year:
+                    if not orig_year:
+                        entry['year'] = extracted_year  # 补全
+                    elif orig_year != extracted_year:
+                        if debug:
+                            print(f"[debug] {entry_key}: year mismatch. Original: {orig_year}. Booktitle: {clean_latex(raw_value)}", file=sys.stderr)
+                
+                # --- 验证与补全 Month ---
+                orig_month = entry.get('month', '').strip()
+                if extracted_month:
+                    if not orig_month:
+                        entry['month'] = extracted_month  # 补全
+                    elif orig_month != extracted_month:
+                        if debug:
+                            print(f"[debug] {entry_key}: month mismatch. Original: {orig_month}. Booktitle: {clean_latex(raw_value)}", file=sys.stderr)
+
+            # 3. 命中则直接修改字典中的值 (注意这里的缩进，必须在 for 循环内部)
             if repl is not None:
                 if field_name in CONFERENCE_FIELDS and repl in full_to_abbr:
                     abbr = full_to_abbr[repl]
