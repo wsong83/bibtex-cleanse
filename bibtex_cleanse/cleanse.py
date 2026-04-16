@@ -270,6 +270,53 @@ def _extract_year_month_from_date_field(date_str: str) -> tuple[str | None, str 
         
     return year, month
 
+def _normalize_single_author(name_str: str) -> str:
+    """将单个作者的名字规范化为 Firstname Lastname 格式。
+    如果 Lastname 包含多个单词（如 von Neumann），自动添加花括号保护。
+    """
+    name_str = name_str.strip()
+    if not name_str:
+        return name_str
+
+    first_parts = []
+    last_part = ""
+
+    if ',' in name_str:
+        # 格式: Lastname, Firstname Middlename
+        parts = name_str.split(',', 1)
+        last_part = parts[0].strip()
+        first_parts = parts[1].strip().split()
+    else:
+        # 格式: Firstname Middlename Lastname (或已被保护的 {Lastname})
+        # 使用正则提取最后一个"词组"（支持被花括号包裹的多个单词）
+        m = re.match(r'^(.*?)\s+(\{[^}]+\}|\S+)$', name_str)
+        if m:
+            first_parts = m.group(1).strip().split()
+            last_part = m.group(2).strip()
+        else:
+            # 只有一个单词的情况，整体作为 Lastname
+            last_part = name_str
+
+    # 检查 last_part 是否需要添加花括号保护
+    # 条件：包含空格，且不是已经被最外层花括号完美包裹的
+    if ' ' in last_part and not (last_part.startswith('{') and last_part.endswith('}')):
+        last_part = f"{{{last_part}}}"
+
+    # 重新组合
+    if first_parts:
+        return f"{' '.join(first_parts)} {last_part}"
+    else:
+        return last_part
+
+def normalize_authors(authors_str: str) -> str:
+    """规范化整个 author 字段，按 BibTeX 标准的 ' and ' 分隔符分割处理。"""
+    if not authors_str:
+        return authors_str
+    # BibTeX 使用 ' and ' 作为作者分隔符
+    authors = re.split(r'\s+and\s+', authors_str)
+    normalized = [_normalize_single_author(a) for a in authors]
+    return " and ".join(normalized)
+
 def simplify_booktitle(raw: str, expansions: list, abbr_to_full: dict, locations_set: set[str]) -> tuple[str, str | None, str | None]:
     """Simplify a CONFERENCE name for fuzzy matching.
     返回: (simplified_text, extracted_year, extracted_month)
@@ -487,6 +534,9 @@ def process_bib(
         # 1. 从字典中直接提取 series/collection，远比正则扒取简单可靠
         series_raw = entry.get('series') or entry.get('collection')
         series_abbr = extract_series_abbr(series_raw) if series_raw else None
+
+        if 'author' in entry:
+            entry['author'] = normalize_authors(entry['author'])
 
         # 2. 遍历当前条目的所有字段
         for field_name in list(entry.keys()):
