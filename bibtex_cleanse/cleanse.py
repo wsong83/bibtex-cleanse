@@ -246,6 +246,30 @@ def _extract_month(text: str) -> str | None:
         return _MONTH_STD.get(raw_m)
     return None
 
+def _extract_year_month_from_date_field(date_str: str) -> tuple[str | None, str | None]:
+    """从 BibTeX 的 date 字段中提取年份和月份。
+    支持 YYYY-MM-DD、YYYY-MM 格式以及包含英文月份的格式。
+    """
+    if not date_str:
+        return None, None
+    date_str = strip_latex(date_str)
+    
+    year = _extract_year(date_str)
+    
+    month = None
+    # 尝试匹配 YYYY-MM 或 YYYY-MM-DD 格式中的数字月份
+    m = re.search(r'(?:19|20)\d{2}[-/](\d{1,2})', date_str)
+    if m:
+        # 将 "08" 这样的字符串转为 "8"，以便在 _MONTH_STD 字典中查找
+        month_num = str(int(m.group(1)))
+        month = _MONTH_STD.get(month_num)
+    
+    # 如果没匹配到数字月份，尝试匹配英文月份（以防万一）
+    if not month:
+        month = _extract_month(date_str)
+        
+    return year, month
+
 def simplify_booktitle(raw: str, expansions: list, abbr_to_full: dict, locations_set: set[str]) -> tuple[str, str | None, str | None]:
     """Simplify a CONFERENCE name for fuzzy matching.
     返回: (simplified_text, extracted_year, extracted_month)
@@ -440,6 +464,25 @@ def process_bib(
             entry['month'] = std_month if std_month else raw_month
             if not std_month:
                 print(f"[debug] {entry_key}: month '{raw_month}' kept (unknown format)", file=sys.stderr)
+
+        # 从 date 字段提取年月并进行补全和验证
+        date_raw = entry.get('date', '').strip()
+        if date_raw:
+            date_year, date_month = _extract_year_month_from_date_field(date_raw)
+            
+            if date_year:
+                orig_year = entry.get('year', '').strip()
+                if not orig_year:
+                    entry['year'] = date_year  # 补全年份
+                elif orig_year != date_year and debug:
+                    print(f"[debug] {entry_key}: year mismatch. Original: {orig_year} Date field: {date_raw}", file=sys.stderr)
+                    
+            if date_month:
+                orig_month = entry.get('month', '').strip()
+                if not orig_month:
+                    entry['month'] = date_month  # 补全月份
+                elif orig_month != date_month and debug:
+                    print(f"[debug] {entry_key}: month mismatch. Original: {orig_month} Date field: {date_raw}", file=sys.stderr)
 
         # 1. 从字典中直接提取 series/collection，远比正则扒取简单可靠
         series_raw = entry.get('series') or entry.get('collection')
