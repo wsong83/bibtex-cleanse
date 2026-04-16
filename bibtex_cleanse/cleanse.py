@@ -29,6 +29,46 @@ TARGET_FIELDS = frozenset({'journal', 'journaltitle', 'booktitle', 'conference'}
 JOURNAL_FIELDS = frozenset({'journal', 'journaltitle'})
 CONFERENCE_FIELDS = frozenset({'booktitle', 'conference'})
 
+# 月份全拼到三字母小写的映射表
+_MONTH_STD = {
+    'january': 'jan',
+    'jan': 'jan',
+    '1': 'jan',
+    'february': 'feb',
+    'feb': 'feb',
+    '2': 'feb',
+    'march': 'mar',
+    'mar': 'mar',
+    '3': 'mar',
+    'april': 'apr',
+    'apr': 'apr',
+    '4': 'apr',
+    'may': 'may',
+    '5': 'may',
+    'june': 'jun',
+    'jun': 'jun',
+    '6': 'jun',
+    'july': 'jul',
+    'jul': 'jul',
+    '7': 'jul',
+    'august': 'aug',
+    'aug': 'aug',
+    '8': 'aug',
+    'september': 'sep',
+    'sept': 'sep',
+    'sep': 'sep',
+    '9': 'sep',
+    'october': 'oct',
+    'oct': 'oct',
+    '10': 'oct',
+    'november': 'nov',
+    'nov': 'nov',
+    '11': 'nov',
+    'december': 'dec',
+    'dec': 'dec',
+    '12': 'dec',
+}
+
 # ===================================================================
 # LaTeX cleaning
 # ===================================================================
@@ -382,7 +422,7 @@ def find_match(
 def process_bib(
     filepath: str,
     abbr_to_full, match_entries_all, match_entries_conference,
-    threshold, expansions, full_to_abbr, locations_set
+    threshold, expansions, full_to_abbr, locations_set, debug: bool = False
 ):
     """解析 BibTeX 文件，标准化目标字段，返回修改后的条目字典列表。"""
     # 延迟导入，避免循环依赖，并使用统一的解析模块
@@ -395,6 +435,15 @@ def process_bib(
     for entry in entries:
         entry_key = entry.get('key', 'UNKNOWN')
         
+        # 0. 读入时立即规范化月份字段为三字母小写
+        if 'month' in entry:
+            raw_month = entry['month'].strip().lower()
+            # 查表转换，如果不在表中（比如某些错误格式），保持原样
+            std_month = _MONTH_STD.get(raw_month, None)
+            entry['month'] = std_month if std_month else raw_month
+            if not std_month:
+                print(f"[debug] {entry_key}: month '{raw_month}' kept (unknown format)", file=sys.stderr)
+
         # 1. 从字典中直接提取 series/collection，远比正则扒取简单可靠
         series_raw = entry.get('series') or entry.get('collection')
         series_abbr = extract_series_abbr(series_raw) if series_raw else None

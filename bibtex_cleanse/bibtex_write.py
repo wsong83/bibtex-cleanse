@@ -36,9 +36,15 @@ def format_bibtex(entries: list[dict], indent: str = "  ", reorder: bool = False
             max_field_len = max(len(field) for field, _ in fields_to_write)
             for field, value in fields_to_write:
                 padding = " " * (max_field_len - len(field))
-                wrapped_value = "{" + value + "}"
-                lines.append(f"{indent}{field.lower()}{padding} = {wrapped_value},")
-            lines[-1] = lines[-1][:-1]
+                
+                # 月份字段不加花括号，直接输出三字母小写
+                if field == 'month':
+                    lines.append(f"{indent}{field.lower()}{padding} = {value},")
+                else:
+                    wrapped_value = "{" + value + "}"
+                    lines.append(f"{indent}{field.lower()}{padding} = {wrapped_value},")                
+
+            # lines[-1] = lines[-1][:-1] do not remvoe the final comma
             lines.append("}")
         lines.append("")
     return "\n".join(lines)

@@ -20,8 +20,8 @@ def main() -> None:
     parser.add_argument('-i', '--input', required=True)
     parser.add_argument('-o', '--output', required=True)
     parser.add_argument('-t', '--threshold', type=float, default=80.0, help='Min score 0-100 (default: 80)')
-    parser.add_argument('--reorder', action='store_true',
-                        help='Sort fields alphabetically (default: keep original order)')
+    parser.add_argument('--reorder', action='store_true', help='Sort fields alphabetically (default: keep original order)')
+    parser.add_argument('--debug', action='store_true', help='Enable debug output for month normalization')
     args = parser.parse_args()
 
     try:
@@ -52,7 +52,7 @@ def main() -> None:
 
     entries, results = process_bib(
         args.input, abbr_to_full, match_all, match_conf, args.threshold,
-        expansions, full_to_abbr, locations_set
+        expansions, full_to_abbr, locations_set, debug=args.debug
     )
 
     n_total = len(results)
