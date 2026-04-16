@@ -317,6 +317,16 @@ def normalize_authors(authors_str: str) -> str:
     normalized = [_normalize_single_author(a) for a in authors]
     return " and ".join(normalized)
 
+def normalize_pages(pages_str: str) -> str:
+    """规范化页码字段中的连字符。
+    将 start-end 格式中的单个或多个连续连字符统一替换为双连字符。
+    例如: 169-178 -> 169--178, 10790---10795 -> 10790--10795
+    """
+    if not pages_str:
+        return pages_str
+    # 匹配数字之间连续的一个或多个连字符（允许中间有空格），替换为双连字符
+    return re.sub(r'(\d+)\s*-+\s*(\d+)', r'\1--\2', pages_str)
+
 def simplify_booktitle(raw: str, expansions: list, abbr_to_full: dict, locations_set: set[str]) -> tuple[str, str | None, str | None]:
     """Simplify a CONFERENCE name for fuzzy matching.
     返回: (simplified_text, extracted_year, extracted_month)
@@ -538,6 +548,9 @@ def process_bib(
         if 'author' in entry:
             entry['author'] = normalize_authors(entry['author'])
 
+        if 'pages' in entry:
+            entry['pages'] = normalize_pages(entry['pages'])
+        
         # 2. 遍历当前条目的所有字段
         for field_name in list(entry.keys()):
             if field_name not in TARGET_FIELDS:

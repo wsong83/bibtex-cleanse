@@ -9,18 +9,17 @@ There are two major useages for this tool:
 For example, the following bibtex entries:
 ~~~
 @InProceedings{Bhatla2025,
-  author    = {Anubhav Bhatla and Hari Rohit Bhavsar and Sayandeep Saha and Biswabandan Panda},
+  author    = {Bhatla, Anubhav and Bhavsar, Hari Rohit and Saha, Sayandeep and Panda, Biswabandan},
   booktitle = {USENIX Security Symposium},
   title     = {{SoK}: So, You Think You Know All About Secure Randomized Caches?},
-  month     = aug,
-  year      = {2025},
+  date      = {2025-08},
 }
 
 @InProceedings{Seznec1993,
   author    = {A. Seznec},
   booktitle = {Proc. 20th Annual Int. Computer Architecture Symp.},
   title     = {A case For Two-way Skewed-associative Caches},
-  pages     = {169--178},
+  pages     = {169-178},
   month     = may,
   year      = {1993},
 }
@@ -39,8 +38,7 @@ For example, the following bibtex entries:
   author    = {Caroline Tice and Tom Roeder and Peter Collingbourne and Stephen Checkoway and {\'{U}}lfar Erlingsson and Luis Lozano and Geoff Pike},
   booktitle = {Proceedings of the 23rd {USENIX} Security Symposium, San Diego, CA, USA, August 20-22, 2014.},
   title     = {Enforcing Forward-Edge Control-Flow Integrity in {GCC} {\&} {LLVM}},
-  month     = aug,
-  year      = {2014},
+  pages     = {941--955},
 }
 ~~~
 
@@ -51,6 +49,7 @@ Will be cleansed into:
   author    = {Anubhav Bhatla and Hari Rohit Bhavsar and Sayandeep Saha and Biswabandan Panda},
   booktitle = {USENIX Security Symposium (USENIX Security)},
   title     = {{SoK}: So, You Think You Know All About Secure Randomized Caches?},
+  date      = {2025-08},
   month     = aug,
   year      = {2025},
 }
@@ -95,6 +94,7 @@ If your default CSV data files are discoverable, you only need to specify the in
 ```bash
 bibtex-cleanse -i references.bib -o cleaned_references.bib
 ```
+
 **Advanced Usage:**
 If you have custom CSV databases or want to adjust the matching sensitivity, use the optional flags:
 ```bash
@@ -104,7 +104,9 @@ bibtex-cleanse \
   -s /path/to/my_abbreviations.csv \
   -i references.bib \
   -o cleaned_references.bib \
-  -t 75.0
+  -t 75.0 \
+  --reorder \
+  --debug
 ```
 **Arguments Reference:**
 | Argument | Shorthand | Required | Default | Description |
@@ -115,38 +117,39 @@ bibtex-cleanse \
 | `--city` | `-c` | No | `data/city.csv` | Path to the 2-column city/location dictionary (used for noise removal). |
 | `--short` | `-s` | No | `data/short.csv` | Path to the 2-column abbreviation expansion rules. |
 | `--threshold` | `-t` | No | `80.0` | Minimum fuzzy match score (0.0 - 100.0). Lower values increase recall but may cause false positives. |
+| `--reorder` | - | No | `False` | Sort fields alphabetically. By default, the original field order is preserved. |
+| `--debug` | - | No | `False` | Enable debug output for month/year normalization mismatches. |
 > **Note on Output:** The cleaned BibTeX content is written to the `-o` file. All statistical summaries, loading logs, and warnings about unmatched entries are printed to `stderr`, so they won't interfere if you pipe the output.
 ---
 
 ### 2. Python API
 If you want to integrate `bibtex-cleanse` into another Python script (e.g., an automated paper downloading pipeline), you can use it as a library:
-
 ```python
-from bibtex_cleanse import load_conferences, load_locations, load_expansions, process_bib
+from bibtex_cleanse import load_conferences, load_locations, load_expansions, process_bib, format_bibtex
 # 1. Load the external databases
 abbr_to_full, match_all, match_conf, full_to_abbr = load_conferences("data/conferences.csv")
 locations_set = load_locations("data/city.csv")
 expansions = load_expansions("data/short.csv")
-# 2. Read your BibTeX file
-with open("input.bib", "r", encoding="utf-8") as f:
-    bib_content = f.read()
-# 3. Process the content
-new_content, results = process_bib(
-    content=bib_content,
+# 2. Process the BibTeX file (returns a list of entry dicts and matching metadata)
+entries, results = process_bib(
+    filepath="input.bib",
     abbr_to_full=abbr_to_full,
     match_entries_all=match_all,
     match_entries_conference=match_conf,
     threshold=80.0,
     expansions=expansions,
     full_to_abbr=full_to_abbr,
-    locations_set=locations_set
+    locations_set=locations_set,
+    debug=False
 )
-# 4. Inspect the results programmatically
+# 3. Inspect the results programmatically
 for r in results:
     if r['matched'] is None:
         print(f"Failed to match: {r['key']} -> {r['field']} = '{r['raw']}' (Score: {r['score']})")
     else:
         print(f"Matched: {r['key']} -> {r['matched']} via [{r['method']}]")
+# 4. Format the modified entries back to a BibTeX string
+new_content = format_bibtex(entries, reorder=False)
 # 5. Save the output
 with open("output.bib", "w", encoding="utf-8") as f:
     f.write(new_content)
@@ -157,7 +160,7 @@ with open("output.bib", "w", encoding="utf-8") as f:
 - `raw`: The original cleaned text.
 - `matched`: The standardized full name (or `None` if unmatched).
 - `score`: The matching score (0-100).
-- `method`: How it was matched (`'series'`, `'name-abbr'`, `'fuzzy'`, or `'below-threshold'`).
+- `method`: How it was matched (`'series'`, `'fuzzy'`, `'fuzzy-conflict'`, or `'below-threshold'`).
 
 
 ## Field Classification
@@ -170,18 +173,16 @@ When a target field is encountered, the engine attempts to match it in descendin
 | Priority | Strategy | Score | Scope | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | **Tier 1** | Series Lookup | 100.0 | Both | Extracts the abbreviation from the entry's `series` or `collection` field and performs an exact dictionary lookup. |
-| **Tier 2** | Name Extraction | 100.0 | Conferences only | Uses Regex to extract candidate abbreviations directly from the field value (e.g., words inside parentheses, or capitalized words followed by a year like `ICML 2023`) and looks them up. |
-| **Tier 3** | Fuzzy Matching | 0–100 | Both | If Tiers 1 & 2 fail, the text is deeply simplified and compared against the database using weighted algorithms. Triggers if the score meets the threshold (default: 80). |
+| **Tier 2** | Name Extraction & Conflict Check | 100.0 / Dynamic | Conferences only | Uses Regex to extract candidate abbreviations directly from the field value (e.g., words inside parentheses, or capitalized words followed by a year like `ICML 2023`) and looks them up. If this lookup succeeds, it is cross-checked with Tier 3 fuzzy matching: conflicts result in a `'fuzzy-conflict'` tag, favoring the fuzzy match. |
+| **Tier 3** | Fuzzy Matching | 0–100 | Both | If Tiers 1 & 2 fail or are bypassed due to conflicts, the text is deeply simplified and compared against the database using weighted algorithms. Triggers if the score meets the threshold (default: 80). |
 
 ## Deep Text Simplification Pipeline
 To maximize fuzzy match accuracy, the tool applies different cleaning depths depending on the field type:
-
 ### For Journals (Light Cleaning)
 1. Strip LaTeX commands (`\textbf`, etc.) and resolve escape characters (`\&` → `&`).
 2. Convert to lowercase.
 3. Apply abbreviation expansions (e.g., `Proc.` → `Proceedings` via `short.csv`).
 4. Normalize separators (`&`, `-`, `/` → spaces).
-
 ### For Conferences (Deep Cleaning)
 Conferences contain heavy noise (dates, locations, proceedings prefixes). The engine applies a sequential pipeline:
 1. **LaTeX & Bracket Stripping**: Removes all `{}`, `\` commands, `()`, and `[]`.
@@ -202,7 +203,24 @@ $$ \text{Score} = (0.2 \times \text{token\_set\_ratio}) + (0.3 \times \text{part
 - **`partial_ratio` (30%)**: Matches the best contiguous substring.
 - **`token_sort_ratio` (50%)**: Matches words after sorting them alphabetically (highest weight to ensure strict word matching).
 
-## State-Machine BibTeX Parser
-Instead of relying on external libraries like `bibtexparser`, `bibtex-cleanse` uses a lightweight, custom state-machine parser. It scans for `@`, matches nested braces `{}`, and reads field values. This ensures:
-- **Format Preservation**: Non-target fields, comments, and exact whitespace formatting are left completely untouched.
-- **Robustness**: Can handle nested braces inside field values without breaking.
+## Additional Field Normalizations
+Besides conference/journal name standardization, `bibtex-cleanse` automatically applies the following structural normalizations:
+- **Author Normalization**: Formats all authors to the `Firstname Lastname` standard. If a last name contains multiple words (e.g., `von Neumann`), it automatically wraps it in protective braces (e.g., `{von Neumann}`) to prevent BibTeX from misinterpreting the name parts.
+- **Month Standardization**: Converts various month formats (e.g., `January`, `Jan`, `1`) into strict three-letter lowercase abbreviations (e.g., `jan`).
+- **Year & Month Completion**: Intelligently extracts missing `year` or `month` data from other fields to fill gaps:
+  - Parses the structured `date` field (e.g., `2014-08-20`) to fill missing `year` or `month`.
+  - Extracts dates embedded inside noisy `booktitle` strings (e.g., `...Symposium, August 20-22, 2014`) to populate missing top-level `year` and `month` fields.
+- **Page Range Normalization**: Standardizes page ranges to the BibTeX convention of using exactly two hyphens (`--`). Any single hyphen (`-`) or multiple hyphens (`---`, `----`) between start and end page numbers are normalized (e.g., `169-178` → `169--178`, `10790---10795` → `10790--10795`).
+
+## Dual-Backend BibTeX Parser
+Instead of strictly mandating external dependencies, `bibtex-cleanse` features a smart dual-backend parsing strategy:
+1. **Primary Backend**: If `bibtexparser >= 2.0` is installed, it leverages its robust parser.
+2. **Fallback Backend**: If no compatible version is found, it seamlessly falls back to a lightweight, built-in state-machine parser.
+The built-in state-machine parser scans for `@`, matches nested braces `{}`, and reads field values strictly. This ensures:
+- **Format Preservation**: The fallback backend retains the exact original field order and whitespace formatting without external dependencies.
+- **Robustness**: Can handle deeply nested braces inside field values without breaking.
+*Note: Regardless of the parser used, the output serializer strictly enforces lowercase field names, aligns fields via `=` signs based on the longest name, and wraps all values in `{}` (except for the `month` field, which outputs raw lowercase abbreviations).*
+
+
+
+
